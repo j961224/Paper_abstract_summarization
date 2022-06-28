@@ -1,0 +1,12 @@
+__pycache__
+wandb.env
+results
+exps
+saving
+checkpoints
+wandb
+*.ipynb
+logs
+*.json
+=1.14
+practice_python.py
