@@ -99,6 +99,7 @@ class Preprocessing():
             'summary':summary
         })
         return dataset
+        
             
     def remove_sequence_character(text):
         
@@ -151,14 +152,17 @@ class Filter:
 def preprocess_function(examples, tokenizer, data_args):
     text = examples['documents']
     targets = examples['summary']
+    bos = tokenizer.bos_token
+    eos = tokenizer.eos_token
     
     # padding = "max_length" if data_args.pad_to_max_length else False
-    
-    model_inputs = tokenizer(text, max_length=data_args.max_input_len, truncation = True)
+    texts = [bos + x + eos for x in text]
+    model_inputs = tokenizer(texts, max_length=data_args.max_input_len, truncation = True)
     
     
     with tokenizer.as_target_tokenizer():
-        labels = tokenizer(targets, max_length=data_args.max_target_len, truncation=True)
+        targetss = [bos + x + eos for x in targets]
+        labels = tokenizer(targetss, max_length=data_args.max_target_len, truncation=True)
         
     # 나중에 padding token loss 계산 시, ignore 하고 싶을 경우 추가로 코드 작성
     
