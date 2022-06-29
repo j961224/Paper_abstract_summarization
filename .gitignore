@@ -5,8 +5,8 @@ exps
 saving
 checkpoints
 wandb
+*.json
 *.ipynb
 logs
-*.json
 =1.14
 practice_python.py
