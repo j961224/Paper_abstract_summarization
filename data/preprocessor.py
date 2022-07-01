@@ -124,9 +124,22 @@ class Preprocessing():
         
         return text
     
+    def remove_background(text):
+        pattern = "배경:"
+        text = re.sub(pattern=pattern, repl=' ',string=text)
+        
+        pattern = "연구목적:"
+        text = re.sub(pattern=pattern, repl=' ',string=text)
+        
+        pattern = "목적:"
+        text = re.sub(pattern=pattern, repl=' ',string=text)
+        
+        return text.strip()
+    
     def for_train(self, data):
         text = data['documents']
         text = Preprocessing.remove_sequence_character(text)
+        text = Preprocessing.remove_background(text)
         text = Preprocessing.remove_ja_mo(text)
         data['documents'] = text
         return data
