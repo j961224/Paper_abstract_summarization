@@ -101,7 +101,8 @@ def main():
     compute_metric_fn  = partial(compute_metrics, tokenizer=tokenizer)
     
     # wandb connected -> performance check!
-    WANDB_AUTH_KEY = "017b4ed94106d375aeacc81e85420783fb2bea8f" 
+    load_dotenv(dotenv_path=log_args.dotenv_path)
+    WANDB_AUTH_KEY = os.getenv("WANDB_AUTH_KEY") 
     wandb.login(key=WANDB_AUTH_KEY)
 
     if training_args.max_steps == -1:
