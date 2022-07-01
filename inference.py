@@ -77,6 +77,8 @@ def main():
     
     ## predict
     
+    training_args.max_length = data_args.max_target_len
+    training_args.generation_max_length = data_args.max_target_len
     training_args.do_predict = True
     if training_args.do_predict:
         trainer = Seq2SeqTrainer(
