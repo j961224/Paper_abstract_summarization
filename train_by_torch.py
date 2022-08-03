@@ -728,11 +728,13 @@ def evaluate(model, eval_dataloader, tokenizer, accelerator, compute, completed_
             tmp_results = {key: value.mid.fmeasure * 100 for key, value in tmp_results.items()}
             
             prediction_lens = [np.count_nonzero(pred != tokenizer.pad_token_id) for pred in generated_tokens]
-            result["gen_len"] = np.mean(prediction_lens)
-            result = {k: round(v, 4) for k, v in result.items()}
+            tmp_results["gen_len"] = np.mean(prediction_lens)
+            tmp_results = {k: round(v, 4) for k, v in result.items()}
             
             for key, value in tmp_results.items():
-                result[key]+=value/len(eval_dataloader)
+                ttmp = value/len(eval_dataloader)
+                print(key, ttmp)
+                result[key]+=ttmp
     
     # result = compute_metric_fn.compute(predictions=decoded_preds,
     #             references=decoded_labels)

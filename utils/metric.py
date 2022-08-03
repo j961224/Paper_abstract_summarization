@@ -9,14 +9,20 @@ from .rouge_utils import (
     score_ngrams, 
     summary_level_lcs
 )
+from konlpy.tag import Mecab
+from MeCab import Tagger
+from konlpy import utils
+
+from konlpy.tag import Okt
+
 
 def compute(predictions, references, tokenizer, use_agregator=True):
     # if rouge_types is None:
-    rouge_types = ["rouge1", "rouge2", "rougeL", "rougeLsum"]
-        
+    rouge_types = ["rouge1", "rouge2", "rougeL"]
+    
     scorer = KoreanRouge(rouge_types=rouge_types, tokenizer=tokenizer)
     if use_agregator:
-        aggregator = scoring.BootstrapAggregator() #################
+        aggregator = scoring.BootstrapAggregator()
     else:
         scores = []
         
@@ -67,7 +73,14 @@ class KoreanRouge(rouge_scorer.RougeScorer) :
     def __init__(self, rouge_types, tokenizer) :
         super(KoreanRouge).__init__()
         self.rouge_types = rouge_types
-        self.tokenizer = tokenizer
+        self.tokenizer = Mecab()
+        # self.tokenizer = tokenizer
+        
+    def usable_pos(self, phrase):
+        """Usable POS extractor."""
+        usable_tag = ('N','SN','SL') # 명사, 숫자, 외국어
+        tagged = self.tokenizer.pos(phrase) # self.pos(phrase)
+        return [s for s, t in tagged if t.startswith(usable_tag)]
     
     def score(self, references, prediction):
         # """Calculates rouge scores between the references and prediction.
@@ -82,18 +95,23 @@ class KoreanRouge(rouge_scorer.RougeScorer) :
 
 		# Pre-compute references tokens and prediction tokens for use by different
 		# types, except if only "rougeLsum" is requested.
-        if len(self.rouge_types) == 1 and self.rouge_types[0] == "rougeLsum":
+        if len(self.rouge_types) == 1: #  and self.rouge_types[0] == "rougeLsum":
             reference_tokens = None
             prediction_tokens = None
         else:
-            reference_tokens = self.tokenizer.tokenize(references)
-            prediction_tokens = self.tokenizer.tokenize(prediction)
+            reference_tokens = self.usable_pos(references)
+            prediction_tokens = self.usable_pos(prediction)
+            # reference_tokens = self.tokenizer.morphs(references)
+            # prediction_tokens = self.tokenizer.morphs(prediction)
+            # reference_tokens = self.tokenizer.tokenize(references)
+            # prediction_tokens = self.tokenizer.tokenize(prediction)
         result = {}
         
         for rouge_type in self.rouge_types:
             if rouge_type == "rougeL":
                 # Rouge from longest common subsequences.
                 scores = score_lcs(reference_tokens, prediction_tokens)
+                
             elif rouge_type == "rougeLsum":
                 # Note: Does not support multi-line text.
                 def get_sents(text):
