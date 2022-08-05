@@ -9,7 +9,7 @@ import multiprocessing
 from utils.metric import compute_metrics
 from functools import partial
 from transformers import BartTokenizerFast
-from utils.trainer import Custom_Trainer
+from utils.trainer import Custom_Trainer, RL_Trainer
 from transformers import HfArgumentParser, AutoModelForSeq2SeqLM
 from model.bart_model import BartForConditionalGeneration
 from data.data_collator import Paper_DataCollator
@@ -45,6 +45,7 @@ def main():
     
     split_datasets = datasets.train_test_split(test_size=0.2, seed=training_args.seed)
     
+    
     # section data and entire data split
     train_datasets = Preprocessing.split_entire_section(dataset = split_datasets['train'])
     valid_datasets = Preprocessing.split_entire_section(dataset = split_datasets['validation'])
@@ -70,7 +71,11 @@ def main():
     train_datasets = train_datasets.shuffle(training_args.seed)
     valid_datasets = valid_datasets.shuffle(training_args.seed)
     
-    # data tokenize화 시키기
+    ####
+    # train_datasets = train_datasets.select([0, 10, 20, 30, 40, 50])
+    # valid_datasets = valid_datasets.select([0, 10, 20, 30, 40, 50])
+    
+    # data tokenize
     preprocess_fn  = partial(preprocess_function, tokenizer=tokenizer, data_args=data_args)
     
     train_datasets = train_datasets.map(preprocess_fn, 
@@ -102,14 +107,14 @@ def main():
     
     # wandb connected -> performance check!
     load_dotenv(dotenv_path=log_args.dotenv_path)
-    WANDB_AUTH_KEY = os.getenv("WANDB_AUTH_KEY") 
+    WANDB_AUTH_KEY = os.getenv("WANDB_AUTH_KEY")
     wandb.login(key=WANDB_AUTH_KEY)
 
     if training_args.max_steps == -1:
             name = f"EP:{training_args.num_train_epochs}_"
     else:
         name = f"MS:{training_args.max_steps}_"
-    name += f"LR:{training_args.learning_rate}_BS:{training_args.per_device_train_batch_size}_WR:{training_args.warmup_ratio}_WD:{training_args.weight_decay}_{model_args.PLM}"
+    name += f"RL_rougelsum_LR:{training_args.learning_rate}_BS:{training_args.per_device_train_batch_size}_WR:{training_args.warmup_ratio}_WD:{training_args.weight_decay}_{model_args.PLM}"
     
     wandb.init(
         entity="jj961224",
@@ -125,15 +130,29 @@ def main():
     training_args.predict_with_generate = True
     if training_args.do_train:
         # train code define -> not to use trainer direction
-        trainer = Custom_Trainer(
-            model,
-            training_args,
-            train_dataset=train_datasets,
-            eval_dataset=valid_datasets,
-            data_collator=data_collator,
-            tokenizer=tokenizer,
-            compute_metrics=compute_metric_fn if training_args.predict_with_generate else None,
-        )
+        
+        use_RL = True
+        # Custom_Trainer
+        if use_RL == False:
+            trainer = RL_Trainer(
+                model,
+                training_args,
+                train_dataset=train_datasets,
+                eval_dataset=valid_datasets,
+                data_collator=data_collator,
+                tokenizer=tokenizer,
+                compute_metrics=compute_metric_fn if training_args.predict_with_generate else None,
+            )
+        else:
+            trainer = RL_Trainer(
+                model,
+                training_args,
+                train_dataset=train_datasets,
+                eval_dataset=valid_datasets,
+                data_collator=data_collator,
+                tokenizer=tokenizer,
+                compute_metrics=compute_metric_fn if training_args.predict_with_generate else None,
+            )
         
         train_result = trainer.train()
         metrics = train_result.metrics
