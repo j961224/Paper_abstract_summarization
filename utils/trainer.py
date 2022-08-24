@@ -289,3 +289,109 @@ class RL_Trainer(Seq2SeqTrainer):
 
         return (loss, outputs) if return_outputs else loss
     
+class Custom_RL_Trainer(Seq2SeqTrainer):
+        
+    
+    def rouge_f1(self, predictions: List[str], targets: List[str]):
+        scorer = KoreanRouge(rouge_types=["rouge1"], tokenizer=self.tokenizer)
+        
+        return [
+            scorer.score(target, prediction)["rouge1"].fmeasure for target, prediction in zip(targets, predictions)
+        ]
+        
+        
+        
+    
+    def training_step(self, model: nn.Module, inputs: Dict[str, Union[torch.Tensor, Any]]) -> torch.Tensor:
+            
+        model.train()
+        inputs = self._prepare_inputs(inputs)
+        
+        
+        loss = self.compute_loss(model, inputs)
+
+        if self.args.n_gpu > 1:
+            loss = loss.mean()  # mean() to average on multi-gpu parallel training
+
+        if self.args.gradient_accumulation_steps > 1 and not self.deepspeed:
+            # deepspeed handles loss scaling by gradient_accumulation_steps in its `backward`
+            loss = loss / self.args.gradient_accumulation_steps
+
+        if self.deepspeed:
+            # loss gets scaled under gradient_accumulation_steps in deepspeed
+            loss = self.deepspeed.backward(loss)
+        else:
+            loss.backward()
+
+        return loss.detach()
+    
+    
+    def compute_loss(self, model: nn.Module, inputs: Dict[str, Union[torch.Tensor, Any]], return_outputs=False):
+                
+
+        # if self.label_smoother is not None and "labels" in inputs:
+        if "labels" in inputs:
+            labels = inputs['labels'] # inputs.pop("labels")
+            pad_mask = labels.unsqueeze(-1).eq(-100) # ignore_index
+        else:
+            labels = None
+        
+        outputs = model(**inputs)
+        
+        # Save past state if it exists
+        # TODO: this needs to be fixed and made cleaner later.
+        if self.args.past_index >= 0:
+            self._past = outputs[self.args.past_index]
+            
+            
+        # maximum likelihood cross entropy loss + policy gradient RL
+        if labels is not None:
+            # loss = self.label_smoother(outputs, labels)
+            
+            # maximum likelihood cross entropy loss
+            ce_loss = outputs["loss"]
+            # print(inputs)
+            
+            # policy gradient RL
+            device = outputs.logits.device
+            decoder_input_ids = inputs["decoder_input_ids"]
+            decoder_input_for_search = torch.full([outputs.logits.size(0), 1], self.model.config.bos_token_id, device=device)
+            from transformers.modeling_outputs import BaseModelOutput
+            encoder_outputs = BaseModelOutput(last_hidden_state=outputs.encoder_last_hidden_state)
+            
+            with torch.no_grad():
+                # greedy_output
+                sampled_output = model.generate(
+                    input_ids = inputs['input_ids'],
+                    attention_mask = inputs['attention_mask'],
+                    # max_length=64,
+                    repetition_penalty=1.0,
+                    length_penalty=1.0,
+                    output_scores=True,
+                    return_dict_in_generate=True,
+                )
+            
+            
+            scores = torch.stack(sampled_output.scores, dim=1) # torch.Size([4, 69, 30000]) / ([4, 1, 30000])
+            log_probs = scores.log_softmax(dim=2)
+          
+            log_probs = (torch.nan_to_num(log_probs * F.one_hot(sampled_output.sequences[:, 1:], log_probs.shape[2]))).sum(dim=2)
+            sequence_log_probs = log_probs.mean(dim=1)
+            
+            sampled_summaries = self.tokenizer.batch_decode(sampled_output.sequences, skip_special_tokens=True)
+            target_summaries = self.tokenizer.batch_decode(decoder_input_ids, skip_special_tokens=True)
+            
+            sampled_rouge_lsum_f1 = self.rouge_f1(sampled_summaries, target_summaries)
+            sampled_rouge_l_f1 = torch.tensor(sampled_rouge_lsum_f1, dtype=torch.float32, device=device).detach()
+            
+            
+            rouge_diff = 1 - sampled_rouge_l_f1
+            rl_loss = rouge_diff.mean(dim=0) # version1 + prob remove
+            
+            loss = 0.7 * rl_loss + (1 - 0.7) * ce_loss
+        else:
+            # We don't use .loss here since the model may return tuples instead of ModelOutput.
+            loss = outputs["loss"] if isinstance(outputs, dict) else outputs[0]
+
+        return (loss, outputs) if return_outputs else loss
+    
